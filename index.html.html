@@ -1,0 +1,1832 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SKY RUSH 3D: GYRO GRAND PRIX</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js r128 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- PeerJS for P2P Smartphone -> PC WebRTC connection -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <!-- QRCode.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <!-- Google Fonts: Orbitron & Rajdhani -->
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+
+    <style>
+        :root {
+            --neon-cyan: #00f3ff;
+            --neon-amber: #ffaa00;
+            --neon-pink: #ff0055;
+            --neon-green: #00ff88;
+        }
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #050914;
+            font-family: 'Rajdhani', sans-serif;
+            color: #ffffff;
+        }
+        .font-orbitron {
+            font-family: 'Orbitron', sans-serif;
+        }
+        /* Glassmorphism panels */
+        .glass-panel {
+            background: rgba(10, 18, 36, 0.78);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            border: 1px solid rgba(0, 243, 255, 0.25);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), inset 0 0 15px rgba(0, 243, 255, 0.08);
+        }
+        .glass-card {
+            background: rgba(15, 25, 48, 0.75);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .glass-card.active-slot {
+            border-color: var(--neon-cyan);
+            box-shadow: 0 0 25px rgba(0, 243, 255, 0.25), inset 0 0 15px rgba(0, 243, 255, 0.1);
+        }
+        .neon-btn {
+            background: linear-gradient(135deg, #00f3ff 0%, #0077ff 100%);
+            color: #030712;
+            font-family: 'Orbitron', sans-serif;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            box-shadow: 0 0 20px rgba(0, 243, 255, 0.5);
+            transition: all 0.2s ease;
+        }
+        .neon-btn:hover {
+            transform: translateY(-2px) scale(1.01);
+            box-shadow: 0 0 32px rgba(0, 243, 255, 0.85);
+        }
+        .neon-btn:active {
+            transform: translateY(1px) scale(0.98);
+        }
+        .amber-btn {
+            background: linear-gradient(135deg, #ffaa00 0%, #ff5500 100%);
+            color: #050914;
+            font-family: 'Orbitron', sans-serif;
+            font-weight: 800;
+            box-shadow: 0 0 20px rgba(255, 170, 0, 0.5);
+        }
+        /* Scanlines overlay */
+        .scanlines {
+            background: linear-gradient(
+                to bottom,
+                rgba(255,255,255,0),
+                rgba(255,255,255,0) 50%,
+                rgba(0, 243, 255, 0.03) 50%,
+                rgba(0, 243, 255, 0.03)
+            );
+            background-size: 100% 4px;
+            pointer-events: none;
+        }
+        #game-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1;
+            display: block;
+        }
+        /* QR Code styling */
+        #qrcode img, #qrcode canvas {
+            margin: 0 auto;
+            border-radius: 10px;
+            padding: 8px;
+            background: #ffffff;
+        }
+        /* Split screen grid lines */
+        .split-border-2 {
+            background: linear-gradient(to right, transparent calc(50% - 1px), rgba(0,243,255,0.6) 50%, transparent calc(50% + 1px));
+        }
+        .split-border-4 {
+            background:
+                linear-gradient(to right, transparent calc(50% - 1px), rgba(0,243,255,0.6) 50%, transparent calc(50% + 1px)),
+                linear-gradient(to bottom, transparent calc(50% - 1px), rgba(0,243,255,0.6) 50%, transparent calc(50% + 1px));
+        }
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #050914; }
+        ::-webkit-scrollbar-thumb { background: #00f3ff55; border-radius: 3px; }
+    </style>
+</head>
+<body class="relative select-none">
+
+    <!-- 3D WebGL Canvas (Host Background & Race Viewport) -->
+    <canvas id="game-canvas"></canvas>
+    <div class="scanlines fixed inset-0 z-10"></div>
+
+    <!-- ========================================================================= -->
+    <!-- TOP GLOBAL NAVIGATION / MODE SWITCHER                                      -->
+    <!-- ========================================================================= -->
+    <header id="top-bar" class="fixed top-0 left-0 right-0 z-40 flex items-center justify-between px-4 py-2.5 bg-slate-950/80 backdrop-blur-md border-b border-cyan-500/20">
+        <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-lg bg-cyan-500/20 border border-cyan-400 flex items-center justify-center shadow-[0_0_15px_rgba(0,243,255,0.4)]">
+                <i class="ph-fill ph-airplane-tilt text-cyan-300 text-xl"></i>
+            </div>
+            <div>
+                <div class="flex items-center gap-2">
+                    <span class="font-orbitron font-black text-base md:text-lg tracking-wider text-white">SKY RUSH <span class="text-cyan-400">3D</span></span>
+                    <span class="text-[10px] font-orbitron px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-400/40">GYRO GP</span>
+                </div>
+                <p class="text-[11px] text-slate-400 hidden sm:block leading-none">Wieloosobowy Symulator Wyścigów Lotniczych sterowany Smartfonem</p>
+            </div>
+        </div>
+
+        <!-- Mode & Audio Quick Controls -->
+        <div class="flex items-center gap-2">
+            <button id="btn-switch-host" onclick="App.switchMode('host')" class="px-3 py-1.5 rounded-lg text-xs font-orbitron font-bold border border-cyan-400 bg-cyan-500/20 text-cyan-200 flex items-center gap-1.5 transition">
+                <i class="ph-bold ph-desktop"></i> <span class="hidden sm:inline">EKRAN GRY (TV/PC)</span>
+            </button>
+            <button id="btn-switch-controller" onclick="App.switchMode('controller')" class="px-3 py-1.5 rounded-lg text-xs font-orbitron font-bold border border-slate-700 bg-slate-900/80 text-slate-300 hover:border-amber-400 hover:text-amber-300 flex items-center gap-1.5 transition">
+                <i class="ph-bold ph-device-mobile-camera"></i> <span>TRYB TELEFONU (KONTROLER)</span>
+            </button>
+            <button id="btn-audio-toggle" onclick="SoundEngine.toggleMute()" class="w-9 h-8 rounded-lg border border-slate-700 bg-slate-900/80 text-cyan-400 hover:border-cyan-400 flex items-center justify-center transition" title="Dźwięk Silników">
+                <i id="audio-icon" class="ph-fill ph-speaker-high text-lg"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- ========================================================================= -->
+    <!-- VIEW 1: HOST LOBBY SCREEN (PC / TV)                                        -->
+    <!-- ========================================================================= -->
+    <main id="host-lobby-view" class="relative z-20 w-full h-full pt-16 pb-4 px-4 md:px-8 flex flex-col justify-between overflow-y-auto">
+        <div class="max-w-7xl w-full mx-auto my-auto grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+
+            <!-- LEFT COLUMN: QR CODE & P2P TELEFONY (4 Cols) -->
+            <section class="lg:col-span-4 glass-panel rounded-2xl p-5 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="text-xs font-orbitron uppercase tracking-widest text-cyan-400 flex items-center gap-1.5">
+                            <span class="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span> KROK 1: POŁĄCZ TELEFONY
+                        </span>
+                        <span id="peer-status-badge" class="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-semibold">
+                            Sieć P2P Gotowa
+                        </span>
+                    </div>
+
+                    <h2 class="font-orbitron font-black text-xl text-white mb-1">ZESKANUJ KOD QR</h2>
+                    <p class="text-xs text-slate-300 mb-3 leading-relaxed">
+                        Każdy z <strong class="text-cyan-300">1 do 4 graczy</strong> skanuje kod aparatem w telefonie. Telefon zamieni się w żyroskopowy wolant lotniczy!
+                    </p>
+
+                    <!-- QR Code Box -->
+                    <div class="relative mx-auto w-44 h-44 bg-white rounded-xl p-2 shadow-[0_0_30px_rgba(0,243,255,0.3)] flex items-center justify-center mb-3">
+                        <div id="qrcode"></div>
+                    </div>
+
+                    <!-- Room Code Display -->
+                    <div class="bg-slate-950/90 border border-cyan-500/40 rounded-xl p-2.5 text-center mb-3">
+                        <div class="text-[10px] uppercase tracking-widest text-slate-400">KOD POKOJU LOTNICZEGO</div>
+                        <div id="room-code-display" class="font-orbitron font-black text-2xl tracking-[0.2em] text-amber-400">----</div>
+                    </div>
+
+                    <!-- Editable Host URL for Local LAN / Hosting -->
+                    <div class="mb-2">
+                        <label class="block text-[11px] text-slate-400 mb-1 flex items-center justify-between">
+                            <span>Adres URL gry (do kodu QR):</span>
+                            <button onclick="HostLobby.copyJoinLink()" class="text-cyan-400 hover:underline flex items-center gap-1">
+                                <i class="ph-bold ph-copy"></i> Kopiuj link
+                            </button>
+                        </label>
+                        <input id="host-url-input" type="text" oninput="HostLobby.updateQRCode()"
+                            class="w-full bg-slate-900/90 border border-slate-700 focus:border-cyan-400 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 font-mono outline-none"
+                            placeholder="https://...">
+                        <p id="sandbox-url-warning" class="hidden text-[11px] text-amber-300/90 mt-1.5 bg-amber-500/10 border border-amber-500/30 rounded p-1.5 leading-tight">
+                            <i class="ph-fill ph-info"></i> <strong>Wskazówka:</strong> Jeśli otwierasz grę w oknie podglądu, możesz od razu przetestować sterowanie klikając <strong>"Tryb Telefonu"</strong> u góry lub otwierając tę stronę na telefonie i wpisując kod pokoju ręcznie!
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Manual Instruction Footer -->
+                <div class="pt-3 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
+                    <span>Lub otwórz grę na telefonie i wpisz kod pokoju.</span>
+                    <button onclick="App.switchMode('controller')" class="text-amber-400 hover:text-amber-300 font-bold underline ml-2 shrink-0">
+                        Testuj Kontroler
+                    </button>
+                </div>
+            </section>
+
+            <!-- RIGHT COLUMN: 4 PLAYER HANGAR SLOTS & RACE SETTINGS (8 Cols) -->
+            <section class="lg:col-span-8 glass-panel rounded-2xl p-5 flex flex-col justify-between">
+                <div>
+                    <!-- Header & Track Info -->
+                    <div class="flex flex-wrap items-center justify-between gap-2 mb-4 pb-3 border-b border-slate-800">
+                        <div>
+                            <span class="text-xs font-orbitron uppercase tracking-widest text-amber-400">KROK 2: HANGAR PILOTÓW (DO 4 GRACZY)</span>
+                            <h1 class="font-orbitron font-black text-2xl md:text-3xl text-white tracking-wide">ESKADRA WYŚCIGOWA</h1>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <div class="bg-slate-900/90 border border-slate-700 rounded-xl px-3 py-1.5 text-right">
+                                <div class="text-[10px] text-slate-400 uppercase">TRASA WYŚCIGU</div>
+                                <select id="track-select" onchange="GameWorld.changeTrack(this.value)" class="bg-transparent font-orbitron font-bold text-xs text-cyan-300 outline-none cursor-pointer">
+                                    <option value="canyon" class="bg-slate-900">KANION HIPERSONICZNY (14 BRAMEK)</option>
+                                    <option value="islands" class="bg-slate-900">ARCHIPELAG NEONOWY (16 BRAMEK)</option>
+                                </select>
+                            </div>
+                            <div class="bg-slate-900/90 border border-slate-700 rounded-xl px-3 py-1.5 text-right">
+                                <div class="text-[10px] text-slate-400 uppercase">OKRĄŻENIA</div>
+                                <select id="laps-select" class="bg-transparent font-orbitron font-bold text-xs text-amber-300 outline-none cursor-pointer">
+                                    <option value="2" class="bg-slate-900">2 OKRĄŻENIA</option>
+                                    <option value="3" selected class="bg-slate-900">3 OKRĄŻENIA</option>
+                                    <option value="5" class="bg-slate-900">5 OKRĄŻEŃ</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 4 Player Slots Grid -->
+                    <div id="lobby-slots-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-3.5 mb-4">
+                        <!-- Dynamically populated by HostLobby.renderSlots() -->
+                    </div>
+                </div>
+
+                <!-- Bottom Controls Info & Start Button -->
+                <div class="pt-3 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div class="flex flex-wrap items-center gap-3 text-xs text-slate-300">
+                        <div class="flex items-center gap-1.5 bg-slate-900/80 px-2.5 py-1.5 rounded-lg border border-slate-800">
+                            <i class="ph-fill ph-device-mobile text-cyan-400 text-base"></i>
+                            <span><strong>Smartfon:</strong> Przechylaj jak wolant + Dopalacz</span>
+                        </div>
+                        <div class="flex items-center gap-1.5 bg-slate-900/80 px-2.5 py-1.5 rounded-lg border border-slate-800">
+                            <i class="ph-fill ph-keyboard text-amber-400 text-base"></i>
+                            <span><strong>PC Gracz 1:</strong> W/S/A/D lub Strzałki + Spacja (Nitro)</span>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-3 w-full sm:w-auto">
+                        <button onclick="HostLobby.fillWithBots()" class="px-3.5 py-3 rounded-xl border border-slate-600 hover:border-cyan-400 bg-slate-900/80 text-xs font-orbitron font-bold text-slate-200 transition shrink-0">
+                            <i class="ph-bold ph-robot mr-1"></i> +BOTY AI
+                        </button>
+                        <button onclick="RaceManager.startRaceCountdown()" class="neon-btn w-full sm:w-auto px-7 py-3.5 rounded-xl text-sm md:text-base flex items-center justify-center gap-2">
+                            <i class="ph-fill ph-flag-checkered text-xl"></i>
+                            <span>START WYŚCIGU (3..2..1)</span>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+        </div>
+    </main>
+
+    <!-- ========================================================================= -->
+    <!-- VIEW 2: ACTIVE 3D RACE HUD & SPLIT-SCREEN OVERLAY                          -->
+    <!-- ========================================================================= -->
+    <section id="race-hud-view" class="hidden fixed inset-0 z-20 pointer-events-none">
+        <!-- Split-screen divider lines -->
+        <div id="split-screen-dividers" class="w-full h-full relative"></div>
+
+        <!-- Individual Viewport HUDs container -->
+        <div id="viewports-hud-container" class="fixed inset-0 pointer-events-none"></div>
+
+        <!-- Center Race Countdown / Announcement Banner -->
+        <div id="race-center-banner" class="fixed inset-0 flex items-center justify-center pointer-events-none z-30">
+            <div id="countdown-text" class="font-orbitron font-black text-7xl md:text-9xl text-cyan-300 drop-shadow-[0_0_35px_rgba(0,243,255,0.9)] transition-transform duration-300 scale-0">
+                3
+            </div>
+        </div>
+
+        <!-- Top-Right Exit to Lobby & Camera Controls (Pointer events enabled) -->
+        <div class="fixed top-14 right-4 z-40 flex items-center gap-2 pointer-events-auto">
+            <button onclick="RaceManager.toggleSplitScreenMode()" id="btn-split-mode" class="glass-panel px-3 py-1.5 rounded-lg text-xs font-orbitron font-bold text-cyan-300 hover:border-cyan-400 flex items-center gap-1.5">
+                <i class="ph-bold ph-squares-four"></i> <span id="split-mode-label">EKRAN: AUTO SPLIT</span>
+            </button>
+            <button onclick="RaceManager.returnToLobby()" class="glass-panel px-3 py-1.5 rounded-lg text-xs font-orbitron font-bold text-rose-400 hover:border-rose-400 flex items-center gap-1.5">
+                <i class="ph-bold ph-arrow-u-up-left"></i> <span>POWRÓT DO HANGARU</span>
+            </button>
+        </div>
+
+        <!-- Finish Podium Modal -->
+        <div id="podium-modal" class="hidden fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 pointer-events-auto">
+            <div class="glass-panel rounded-2xl max-w-lg w-full p-6 text-center border-2 border-amber-400/60 shadow-[0_0_50px_rgba(255,170,0,0.3)]">
+                <div class="w-16 h-16 rounded-2xl bg-amber-500/20 border border-amber-400 mx-auto flex items-center justify-center mb-3">
+                    <i class="ph-fill ph-trophy text-4xl text-amber-400"></i>
+                </div>
+                <h2 class="font-orbitron font-black text-3xl text-white mb-1">META WYŚCIGU!</h2>
+                <p class="text-sm text-slate-300 mb-5">Oficjalne wyniki Grand Prix Eskadry</p>
+                <div id="podium-standings" class="space-y-2.5 mb-6 text-left"></div>
+                <div class="flex gap-3 justify-center">
+                    <button onclick="RaceManager.startRaceCountdown()" class="neon-btn px-6 py-3 rounded-xl text-sm flex items-center gap-2">
+                        <i class="ph-bold ph-arrows-clockwise"></i> REWANŻ
+                    </button>
+                    <button onclick="RaceManager.returnToLobby()" class="px-5 py-3 rounded-xl border border-slate-600 bg-slate-900 text-xs font-orbitron font-bold text-slate-200">
+                        HANGAR / QR
+                    </button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ========================================================================= -->
+    <!-- VIEW 3: SMARTPHONE GYRO FLIGHT CONTROLLER                                  -->
+    <!-- ========================================================================= -->
+    <section id="controller-view" class="hidden fixed inset-0 z-30 bg-slate-950 flex flex-col justify-between pt-14 pb-3 px-3 sm:px-6 overflow-hidden">
+
+        <!-- Controller Top Connection & Pilot Customization Bar -->
+        <div class="glass-panel rounded-xl p-2.5 flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+                <span id="ctrl-conn-dot" class="w-3 h-3 rounded-full bg-amber-400 animate-pulse"></span>
+                <span id="ctrl-conn-status" class="font-orbitron font-bold text-xs text-amber-300">ŁĄCZENIE Z EKRANEM...</span>
+            </div>
+
+            <!-- Room Code Join Input (in case opened manually) -->
+            <div class="flex items-center gap-1.5">
+                <span class="text-[11px] text-slate-400">KOD POKOJU:</span>
+                <input id="ctrl-room-input" type="text" maxlength="9" placeholder="NP. AERO-1234"
+                    class="w-28 bg-slate-900 border border-cyan-500/40 rounded px-2 py-1 text-xs font-orbitron font-bold text-cyan-300 uppercase outline-none">
+                <button onclick="MobileController.connectToRoomInput()" class="px-2.5 py-1 rounded bg-cyan-500 text-slate-950 font-orbitron font-bold text-xs">
+                    POŁĄCZ
+                </button>
+            </div>
+
+            <!-- Pilot Name & Color Picker -->
+            <div class="flex items-center gap-2">
+                <input id="ctrl-pilot-name" type="text" maxlength="12" value="PILOT 1" onchange="MobileController.sendProfileUpdate()"
+                    class="w-24 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs font-bold text-white uppercase outline-none">
+                <div class="flex items-center gap-1">
+                    <button onclick="MobileController.setColor('#00f3ff')" class="w-5 h-5 rounded-full bg-[#00f3ff] border border-white"></button>
+                    <button onclick="MobileController.setColor('#ff0055')" class="w-5 h-5 rounded-full bg-[#ff0055] border border-white"></button>
+                    <button onclick="MobileController.setColor('#ffaa00')" class="w-5 h-5 rounded-full bg-[#ffaa00] border border-white"></button>
+                    <button onclick="MobileController.setColor('#00ff88')" class="w-5 h-5 rounded-full bg-[#00ff88] border border-white"></button>
+                </div>
+            </div>
+        </div>
+
+        <!-- MAIN COCKPIT INSTRUMENT PANEL (3 Columns on Mobile Landscape) -->
+        <div class="flex-1 my-2 grid grid-cols-12 gap-3 items-center">
+
+            <!-- LEFT: VIRTUAL YOKE / TOUCH STICK + CALIBRATION (4 Cols) -->
+            <div class="col-span-5 sm:col-span-4 h-full glass-panel rounded-2xl p-3 flex flex-col items-center justify-between relative">
+                <div class="w-full flex items-center justify-between text-[11px] text-slate-400">
+                    <span class="font-orbitron font-bold text-cyan-400">WOLANT / ŻYROSKOP</span>
+                    <span id="gyro-active-badge" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 text-[10px]">DOTYK / GYRO</span>
+                </div>
+
+                <!-- Touch Virtual Stick Area (Works alongside or instead of Gyro) -->
+                <div id="touch-yoke-zone" class="relative w-36 h-36 sm:w-44 sm:h-44 rounded-full border-2 border-cyan-500/40 bg-slate-900/90 flex items-center justify-center shadow-[inset_0_0_25px_rgba(0,243,255,0.15)] touch-none">
+                    <!-- Crosshairs -->
+                    <div class="absolute inset-x-4 h-[1px] bg-cyan-500/20"></div>
+                    <div class="absolute inset-y-4 w-[1px] bg-cyan-500/20"></div>
+                    <!-- Movable Stick Puck -->
+                    <div id="touch-yoke-puck" class="w-14 h-14 rounded-full bg-gradient-to-br from-cyan-400 to-blue-600 border-2 border-white shadow-[0_0_20px_rgba(0,243,255,0.8)] flex items-center justify-center transition-transform duration-75">
+                        <i class="ph-bold ph-crosshair text-slate-950 text-2xl"></i>
+                    </div>
+                </div>
+
+                <!-- Gyro Activation & Zero Calibration Buttons -->
+                <div class="w-full grid grid-cols-2 gap-1.5 mt-1">
+                    <button onclick="MobileController.requestGyroPermission()" class="amber-btn py-2 px-2 rounded-lg text-[10px] sm:text-xs flex items-center justify-center gap-1 leading-tight">
+                        <i class="ph-bold ph-compass text-sm"></i>
+                        <span>WŁĄCZ ŻYROSKOP</span>
+                    </button>
+                    <button onclick="MobileController.calibrateZero()" class="bg-slate-800 hover:bg-slate-700 border border-cyan-400/40 text-cyan-300 font-orbitron font-bold py-2 px-2 rounded-lg text-[10px] sm:text-xs flex items-center justify-center gap-1 leading-tight">
+                        <i class="ph-bold ph-target text-sm"></i>
+                        <span>KALIBRUJ ZERO</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- CENTER: ARTIFICIAL HORIZON & LIVE TELEMETRY (4 Cols) -->
+            <div class="col-span-3 sm:col-span-4 h-full glass-panel rounded-2xl p-3 flex flex-col items-center justify-between text-center">
+                <div class="text-[11px] font-orbitron text-slate-400 uppercase tracking-wider">SZTUCZNY HORYZONT</div>
+
+                <!-- Artificial Horizon Indicator -->
+                <div class="relative w-28 h-28 sm:w-36 sm:h-36 rounded-full overflow-hidden border-2 border-cyan-400 shadow-[0_0_25px_rgba(0,243,255,0.25)] bg-sky-900">
+                    <div id="horizon-ball" class="w-full h-full relative transition-transform duration-75">
+                        <div class="w-full h-1/2 bg-sky-500/50 border-b-2 border-white"></div>
+                        <div class="w-full h-1/2 bg-amber-900/70"></div>
+                        <!-- Pitch ladder lines -->
+                        <div class="absolute inset-0 flex flex-col items-center justify-center gap-3 pointer-events-none">
+                            <div class="w-8 h-[2px] bg-white/70"></div>
+                            <div class="w-14 h-[2px] bg-white/90"></div>
+                            <div class="w-8 h-[2px] bg-white/70"></div>
+                        </div>
+                    </div>
+                    <!-- Fixed Aircraft Reference Symbol -->
+                    <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <div class="w-16 h-1 bg-amber-400 shadow-[0_0_8px_#ffaa00]"></div>
+                        <div class="w-3 h-3 rounded-full border-2 border-amber-400 bg-slate-950"></div>
+                    </div>
+                </div>
+
+                <!-- Pitch & Roll Readout -->
+                <div class="w-full grid grid-cols-2 gap-1 text-xs bg-slate-900/90 p-1.5 rounded-lg border border-slate-800">
+                    <div>
+                        <span class="text-[10px] text-slate-400 block">PRZECHYŁ (ROLL)</span>
+                        <span id="readout-roll" class="font-orbitron font-bold text-cyan-300">0°</span>
+                    </div>
+                    <div>
+                        <span class="text-[10px] text-slate-400 block">PUŁAP (PITCH)</span>
+                        <span id="readout-pitch" class="font-orbitron font-bold text-amber-300">0°</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RIGHT: NITRO AFTERBURNER & AIRBRAKE PEDALS (4 Cols) -->
+            <div class="col-span-4 h-full glass-panel rounded-2xl p-3 flex flex-col justify-between gap-2">
+                <!-- NITRO BOOST BUTTON (Hold) -->
+                <button id="btn-ctrl-nitro"
+                    onpointerdown="MobileController.setAction('nitro', true)"
+                    onpointerup="MobileController.setAction('nitro', false)"
+                    onpointerleave="MobileController.setAction('nitro', false)"
+                    class="flex-1 w-full rounded-xl bg-gradient-to-br from-amber-400 via-orange-500 to-rose-600 text-slate-950 font-orbitron font-black text-base sm:text-xl shadow-[0_0_25px_rgba(255,100,0,0.6)] active:scale-95 transition flex flex-col items-center justify-center gap-1 border-2 border-amber-200">
+                    <i class="ph-fill ph-fire text-3xl sm:text-4xl"></i>
+                    <span>DOPALACZ</span>
+                    <span class="text-[10px] font-sans font-bold uppercase opacity-80">TRZYMAJ ABY PRZYSPIESZYĆ</span>
+                </button>
+
+                <!-- AIRBRAKE / DRIFT TURN BUTTON -->
+                <button id="btn-ctrl-brake"
+                    onpointerdown="MobileController.setAction('brake', true)"
+                    onpointerup="MobileController.setAction('brake', false)"
+                    onpointerleave="MobileController.setAction('brake', false)"
+                    class="h-16 sm:h-20 w-full rounded-xl bg-slate-900 hover:bg-slate-800 border-2 border-cyan-500/50 text-cyan-300 font-orbitron font-bold text-xs sm:text-sm active:scale-95 transition flex items-center justify-center gap-2">
+                    <i class="ph-bold ph-wind text-xl"></i>
+                    <span>HAMULEC LOTNICZY</span>
+                </button>
+            </div>
+
+        </div>
+
+        <!-- Bottom Status Footer -->
+        <div class="text-center text-[11px] text-slate-400 flex items-center justify-between px-2">
+            <span>Trzymaj telefon poziomo jak kierownicę / wolant.</span>
+            <button onclick="MobileController.toggleInvertPitch()" id="btn-invert-pitch" class="text-cyan-400 underline font-semibold">
+                Oś Pionowa: Normalna (Lotnicza)
+            </button>
+        </div>
+    </section>
+
+    <!-- ========================================================================= -->
+    <!-- APPLICATION LOGIC (SOUND, NETWORKING, 3D ENGINE, GAMEPLAY)                 -->
+    <!-- ========================================================================= -->
+    <script>
+    /**
+     * 1. PROCEDURAL WEB AUDIO ENGINE (Jet Turbine, Sonic Boost, Checkpoints)
+     */
+    const SoundEngine = {
+        ctx: null,
+        muted: false,
+        engineOsc: null,
+        engineGain: null,
+
+        init() {
+            if (this.ctx) return;
+            try {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                this.ctx = new AudioCtx();
+
+                // Continuous jet turbine hum
+                this.engineOsc = this.ctx.createOscillator();
+                this.engineGain = this.ctx.createGain();
+                this.engineOsc.type = 'sawtooth';
+                this.engineOsc.frequency.value = 65;
+
+                // Lowpass filter for smooth jet whoosh
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.value = 240;
+
+                this.engineGain.gain.value = 0.0;
+                this.engineOsc.connect(filter);
+                filter.connect(this.engineGain);
+                this.engineGain.connect(this.ctx.destination);
+                this.engineOsc.start();
+            } catch (e) {
+                console.warn('Web Audio API not initialized yet.');
+            }
+        },
+
+        updateEngineSound(speedRatio, isBoosting, inRace) {
+            if (!this.ctx || this.muted) return;
+            if (this.ctx.state === 'suspended') this.ctx.resume();
+            const targetGain = inRace ? (isBoosting ? 0.12 : 0.06) : 0.015;
+            const targetFreq = 55 + speedRatio * 95 + (isBoosting ? 50 : 0);
+            this.engineGain.gain.setTargetAtTime(targetGain, this.ctx.currentTime, 0.1);
+            this.engineOsc.frequency.setTargetAtTime(targetFreq, this.ctx.currentTime, 0.1);
+        },
+
+        playBeep(freq = 600, duration = 0.15, type = 'sine') {
+            if (this.muted) return;
+            this.init();
+            if (!this.ctx) return;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+            gain.gain.setValueAtTime(0.15, this.ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start();
+            osc.stop(this.ctx.currentTime + duration);
+        },
+
+        playCheckpoint() {
+            this.playBeep(880, 0.12, 'triangle');
+            setTimeout(() => this.playBeep(1320, 0.22, 'triangle'), 90);
+        },
+
+        playBoostBoom() {
+            this.playBeep(140, 0.35, 'sawtooth');
+        },
+
+        toggleMute() {
+            this.muted = !this.muted;
+            if (this.engineGain && this.ctx) {
+                this.engineGain.gain.setValueAtTime(0, this.ctx.currentTime);
+            }
+            const icon = document.getElementById('audio-icon');
+            icon.className = this.muted ? 'ph-fill ph-speaker-slash text-lg text-rose-400' : 'ph-fill ph-speaker-high text-lg text-cyan-400';
+        }
+    };
+
+    /**
+     * 2. PILOT SLOTS STATE (Up to 4 Players: Phone P2P, Local Keyboard, or AI Bot)
+     */
+    const PLAYER_COLORS = ['#00f3ff', '#ff0055', '#ffaa00', '#00ff88'];
+    const DEFAULT_NAMES = ['ORZEŁ-1', 'SOKÓŁ-2', 'GROM-3', 'FENIKS-4'];
+
+    const PilotsState = [
+        {
+            id: 0,
+            name: 'ORZEŁ-1',
+            color: PLAYER_COLORS[0],
+            controlType: 'keyboard', // 'phone' | 'keyboard' | 'ai'
+            connectedPhoneId: null,
+            input: { roll: 0, pitch: 0, nitro: false, brake: false },
+            plane: null
+        },
+        {
+            id: 1,
+            name: 'SOKÓŁ-2',
+            color: PLAYER_COLORS[1],
+            controlType: 'ai',
+            connectedPhoneId: null,
+            input: { roll: 0, pitch: 0, nitro: false, brake: false },
+            plane: null
+        },
+        {
+            id: 2,
+            name: 'GROM-3',
+            color: PLAYER_COLORS[2],
+            controlType: 'ai',
+            connectedPhoneId: null,
+            input: { roll: 0, pitch: 0, nitro: false, brake: false },
+            plane: null
+        },
+        {
+            id: 3,
+            name: 'FENIKS-4',
+            color: PLAYER_COLORS[3],
+            controlType: 'ai',
+            connectedPhoneId: null,
+            input: { roll: 0, pitch: 0, nitro: false, brake: false },
+            plane: null
+        }
+    ];
+
+    /**
+     * 3. HOST LOBBY & P2P WEBRTC SERVER (PeerJS) + SAME-DEVICE BROADCAST CHANNEL
+     */
+    const HostLobby = {
+        roomCode: '',
+        peer: null,
+        connections: {},
+        localChannel: null,
+
+        init() {
+            // Generate clean 4-digit room code
+            const randNum = Math.floor(1000 + Math.random() * 9000);
+            this.roomCode = `AERO-${randNum}`;
+            document.getElementById('room-code-display').textContent = this.roomCode;
+
+            // Default URL for QR code
+            const baseUrl = window.location.href.split('?')[0];
+            const urlInput = document.getElementById('host-url-input');
+            urlInput.value = `${baseUrl}?room=${this.roomCode}`;
+
+            // Detect if running inside a local/sandbox URL to show helpful tip
+            if (baseUrl.startsWith('blob:') || baseUrl.includes('scf.usercontent.goog') || baseUrl.includes('localhost')) {
+                document.getElementById('sandbox-url-warning').classList.remove('hidden');
+            }
+
+            this.updateQRCode();
+            this.renderSlots();
+            this.initPeerServer();
+            this.initBroadcastChannel();
+        },
+
+        updateQRCode() {
+            const container = document.getElementById('qrcode');
+            container.innerHTML = '';
+            const fullUrl = document.getElementById('host-url-input').value.trim();
+            try {
+                new QRCode(container, {
+                    text: fullUrl || window.location.href,
+                    width: 160,
+                    height: 160,
+                    colorDark: '#050914',
+                    colorLight: '#ffffff',
+                    correctLevel: QRCode.CorrectLevel.M
+                });
+            } catch (e) {
+                console.warn('QR generation error:', e);
+            }
+        },
+
+        copyJoinLink() {
+            const input = document.getElementById('host-url-input');
+            input.select();
+            document.execCommand('copy');
+            SoundEngine.playBeep(880, 0.08);
+        },
+
+        initBroadcastChannel() {
+            // Allows testing Controller Mode in another tab or same window seamlessly
+            if ('BroadcastChannel' in window) {
+                this.localChannel = new BroadcastChannel('skyrush_gyro_channel');
+                this.localChannel.onmessage = (ev) => {
+                    this.handleIncomingControllerData('LOCAL-TAB', ev.data);
+                };
+            }
+        },
+
+        initPeerServer() {
+            if (typeof Peer === 'undefined') return;
+            const peerId = `skyrush-gp-${this.roomCode}`;
+            try {
+                this.peer = new Peer(peerId);
+                this.peer.on('open', () => {
+                    const badge = document.getElementById('peer-status-badge');
+                    badge.textContent = 'Serwer QR Online';
+                    badge.className = 'text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-semibold';
+                });
+
+                this.peer.on('connection', (conn) => {
+                    conn.on('open', () => {
+                        this.assignPhoneToSlot(conn.peer, conn);
+                    });
+                    conn.on('data', (data) => {
+                        this.handleIncomingControllerData(conn.peer, data);
+                    });
+                    conn.on('close', () => {
+                        this.removePhoneSlot(conn.peer);
+                    });
+                });
+
+                this.peer.on('error', (err) => {
+                    console.warn('PeerJS warning:', err);
+                });
+            } catch (e) {
+                console.warn('PeerJS init failed:', e);
+            }
+        },
+
+        assignPhoneToSlot(peerId, conn = null) {
+            // Check if already assigned
+            let slot = PilotsState.find(s => s.connectedPhoneId === peerId);
+            if (!slot) {
+                // Find first non-phone slot
+                slot = PilotsState.find(s => s.controlType !== 'phone') || PilotsState[0];
+                slot.controlType = 'phone';
+                slot.connectedPhoneId = peerId;
+                slot.name = `TEL-${slot.id + 1}`;
+                SoundEngine.playCheckpoint();
+                this.renderSlots();
+            }
+            if (conn) {
+                this.connections[peerId] = conn;
+                conn.send({ type: 'assigned', slotId: slot.id, color: slot.color, name: slot.name });
+            }
+            return slot;
+        },
+
+        removePhoneSlot(peerId) {
+            const slot = PilotsState.find(s => s.connectedPhoneId === peerId);
+            if (slot) {
+                slot.connectedPhoneId = null;
+                slot.controlType = slot.id === 0 ? 'keyboard' : 'ai';
+                this.renderSlots();
+            }
+        },
+
+        handleIncomingControllerData(peerId, data) {
+            if (!data) return;
+            let slot = PilotsState.find(s => s.connectedPhoneId === peerId);
+            if (!slot) {
+                slot = this.assignPhoneToSlot(peerId);
+            }
+            if (data.type === 'input') {
+                slot.input.roll = Math.max(-1, Math.min(1, data.roll || 0));
+                slot.input.pitch = Math.max(-1, Math.min(1, data.pitch || 0));
+                slot.input.nitro = !!data.nitro;
+                slot.input.brake = !!data.brake;
+            } else if (data.type === 'profile') {
+                if (data.name) slot.name = data.name.substring(0, 12).toUpperCase();
+                if (data.color) slot.color = data.color;
+                GameWorld.updatePlaneColors();
+                this.renderSlots();
+            }
+        },
+
+        cycleSlotMode(slotId) {
+            const slot = PilotsState[slotId];
+            const order = ['keyboard', 'ai', 'phone'];
+            const nextIdx = (order.indexOf(slot.controlType) + 1) % order.length;
+            slot.controlType = order[nextIdx];
+            SoundEngine.playBeep(520, 0.07);
+            this.renderSlots();
+        },
+
+        fillWithBots() {
+            PilotsState.forEach((slot, idx) => {
+                if (slot.controlType !== 'phone' && idx > 0) {
+                    slot.controlType = 'ai';
+                }
+            });
+            SoundEngine.playBeep(700, 0.1);
+            this.renderSlots();
+        },
+
+        renderSlots() {
+            const grid = document.getElementById('lobby-slots-grid');
+            if (!grid) return;
+
+            grid.innerHTML = PilotsState.map((slot, idx) => {
+                const isPhone = slot.controlType === 'phone';
+                const isKeyboard = slot.controlType === 'keyboard';
+                const badgeText = isPhone
+                    ? (slot.connectedPhoneId ? 'POŁĄCZONO (SMARTFON)' : 'CZEKA NA SKAN QR...')
+                    : (isKeyboard ? (idx === 0 ? 'KLAWIATURA (WASD/STRZAŁKI)' : 'KLAWIATURA (IJKL)') : 'PILOT AI (BOT)');
+
+                const badgeColor = isPhone
+                    ? (slot.connectedPhoneId ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400' : 'bg-amber-500/20 text-amber-300 border-amber-400 animate-pulse')
+                    : (isKeyboard ? 'bg-cyan-500/20 text-cyan-300 border-cyan-400' : 'bg-purple-500/20 text-purple-300 border-purple-400');
+
+                const iconClass = isPhone ? 'ph-device-mobile-camera' : (isKeyboard ? 'ph-keyboard' : 'ph-robot');
+
+                return `
+                <div class="glass-card ${isPhone && slot.connectedPhoneId ? 'active-slot' : ''} rounded-xl p-3.5 flex flex-col justify-between relative overflow-hidden">
+                    <div class="absolute top-0 left-0 w-1.5 h-full" style="background:${slot.color}"></div>
+                    <div class="flex items-center justify-between pl-2 mb-2">
+                        <div class="flex items-center gap-2">
+                            <span class="font-orbitron font-black text-xs px-2 py-0.5 rounded text-slate-950" style="background:${slot.color}">P${idx + 1}</span>
+                            <input type="text" value="${slot.name}" maxlength="12"
+                                onchange="PilotsState[${idx}].name = this.value.toUpperCase();"
+                                class="bg-transparent font-orbitron font-bold text-base text-white border-b border-transparent focus:border-cyan-400 outline-none w-32 uppercase">
+                        </div>
+                        <button onclick="HostLobby.cycleSlotMode(${idx})" class="text-[11px] font-orbitron px-2.5 py-1 rounded-lg border ${badgeColor} flex items-center gap-1 hover:brightness-125 transition" title="Kliknij aby zmienić typ sterowania">
+                            <i class="ph-bold ${iconClass}"></i>
+                            <span>${badgeText}</span>
+                        </button>
+                    </div>
+
+                    <div class="pl-2 flex items-center justify-between text-xs text-slate-400 pt-2 border-t border-slate-800/80">
+                        <div class="flex items-center gap-1.5">
+                            <span>Kolor odrzutowca:</span>
+                            ${PLAYER_COLORS.map(c => `
+                                <button onclick="PilotsState[${idx}].color='${c}'; GameWorld.updatePlaneColors(); HostLobby.renderSlots();"
+                                    class="w-4 h-4 rounded-full border ${slot.color === c ? 'border-white scale-125' : 'border-transparent opacity-60'}"
+                                    style="background:${c}"></button>
+                            `).join('')}
+                        </div>
+                        <span class="text-[11px] text-slate-400 font-mono">kliknij tryb by zmienić</span>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+    };
+
+    /**
+     * 4. SMARTPHONE CONTROLLER MODULE (Gyroscope + Virtual Touch Yoke + WebRTC Client)
+     */
+    const MobileController = {
+        peer: null,
+        conn: null,
+        localChannel: null,
+        gyroEnabled: false,
+        rawBeta: 0,
+        rawGamma: 0,
+        zeroBeta: 0,
+        zeroGamma: 0,
+        invertPitch: false,
+        touchRoll: 0,
+        touchPitch: 0,
+        isTouchingYoke: false,
+        inputState: { roll: 0, pitch: 0, nitro: false, brake: false },
+
+        init(roomCodeFromUrl) {
+            if ('BroadcastChannel' in window) {
+                this.localChannel = new BroadcastChannel('skyrush_gyro_channel');
+            }
+            this.initTouchYoke();
+            this.startInputLoop();
+
+            // Automatically listen to deviceorientation if browser permits without explicit prompt (Android)
+            window.addEventListener('deviceorientation', (e) => this.handleOrientation(e), true);
+
+            if (roomCodeFromUrl) {
+                document.getElementById('ctrl-room-input').value = roomCodeFromUrl;
+                this.connectToHost(roomCodeFromUrl);
+            } else if (HostLobby.roomCode) {
+                document.getElementById('ctrl-room-input').value = HostLobby.roomCode;
+                this.connectToHost(HostLobby.roomCode);
+            }
+        },
+
+        connectToRoomInput() {
+            const code = document.getElementById('ctrl-room-input').value.trim().toUpperCase();
+            if (code) this.connectToHost(code);
+        },
+
+        connectToHost(roomCode) {
+            const statusEl = document.getElementById('ctrl-conn-status');
+            const dotEl = document.getElementById('ctrl-conn-dot');
+            statusEl.textContent = `ŁĄCZENIE Z ${roomCode}...`;
+
+            if (typeof Peer === 'undefined') return;
+            try {
+                if (this.peer) this.peer.destroy();
+                this.peer = new Peer();
+                this.peer.on('open', () => {
+                    const targetPeerId = `skyrush-gp-${roomCode}`;
+                    this.conn = this.peer.connect(targetPeerId, { reliable: false });
+
+                    this.conn.on('open', () => {
+                        statusEl.textContent = `POŁĄCZONO: ${roomCode}`;
+                        statusEl.className = 'font-orbitron font-bold text-xs text-emerald-400';
+                        dotEl.className = 'w-3 h-3 rounded-full bg-emerald-400';
+                        if (navigator.vibrate) navigator.vibrate([60, 40, 100]);
+                        this.sendProfileUpdate();
+                    });
+
+                    this.conn.on('data', (data) => {
+                        if (data && data.type === 'assigned') {
+                            document.getElementById('ctrl-pilot-name').value = data.name;
+                        }
+                    });
+
+                    this.conn.on('close', () => {
+                        statusEl.textContent = 'ROZŁĄCZONO';
+                        statusEl.className = 'font-orbitron font-bold text-xs text-rose-400';
+                    });
+                });
+            } catch (e) {
+                console.warn('Controller Peer error:', e);
+            }
+        },
+
+        async requestGyroPermission() {
+            SoundEngine.playBeep(880, 0.1);
+            try {
+                if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                    const response = await DeviceOrientationEvent.requestPermission();
+                    if (response === 'granted') {
+                        window.addEventListener('deviceorientation', (e) => this.handleOrientation(e), true);
+                        this.activateGyroBadge();
+                    }
+                } else {
+                    window.addEventListener('deviceorientation', (e) => this.handleOrientation(e), true);
+                    this.activateGyroBadge();
+                }
+                setTimeout(() => this.calibrateZero(), 150);
+            } catch (err) {
+                console.warn('Gyro permission warning:', err);
+            }
+        },
+
+        activateGyroBadge() {
+            this.gyroEnabled = true;
+            const badge = document.getElementById('gyro-active-badge');
+            badge.textContent = 'ŻYROSKOP AKTYWNY';
+            badge.className = 'px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-400 text-[10px] font-bold';
+        },
+
+        handleOrientation(event) {
+            if (event.beta === null && event.gamma === null) return;
+            this.gyroEnabled = true;
+            this.rawBeta = event.beta || 0;
+            this.rawGamma = event.gamma || 0;
+        },
+
+        calibrateZero() {
+            this.zeroBeta = this.rawBeta;
+            this.zeroGamma = this.rawGamma;
+            SoundEngine.playCheckpoint();
+            if (navigator.vibrate) navigator.vibrate(50);
+        },
+
+        toggleInvertPitch() {
+            this.invertPitch = !this.invertPitch;
+            document.getElementById('btn-invert-pitch').textContent =
+                `Oś Pionowa: ${this.invertPitch ? 'Odwrócona' : 'Normalna (Lotnicza)'}`;
+        },
+
+        initTouchYoke() {
+            const zone = document.getElementById('touch-yoke-zone');
+            const puck = document.getElementById('touch-yoke-puck');
+            if (!zone || !puck) return;
+
+            const handleMove = (clientX, clientY) => {
+                const rect = zone.getBoundingClientRect();
+                const centerX = rect.left + rect.width / 2;
+                const centerY = rect.top + rect.height / 2;
+                const maxRadius = rect.width / 2 - 20;
+
+                let dx = clientX - centerX;
+                let dy = clientY - centerY;
+                const dist = Math.hypot(dx, dy);
+                if (dist > maxRadius) {
+                    dx = (dx / dist) * maxRadius;
+                    dy = (dy / dist) * maxRadius;
+                }
+
+                puck.style.transform = `translate(${dx}px, ${dy}px)`;
+                this.touchRoll = dx / maxRadius;
+                this.touchPitch = (dy / maxRadius) * (this.invertPitch ? -1 : 1);
+            };
+
+            zone.addEventListener('pointerdown', (e) => {
+                this.isTouchingYoke = true;
+                zone.setPointerCapture(e.pointerId);
+                handleMove(e.clientX, e.clientY);
+            });
+
+            zone.addEventListener('pointermove', (e) => {
+                if (!this.isTouchingYoke) return;
+                handleMove(e.clientX, e.clientY);
+            });
+
+            const resetYoke = () => {
+                this.isTouchingYoke = false;
+                this.touchRoll = 0;
+                this.touchPitch = 0;
+                puck.style.transform = 'translate(0px, 0px)';
+            };
+
+            zone.addEventListener('pointerup', resetYoke);
+            zone.addEventListener('pointercancel', resetYoke);
+        },
+
+        setAction(action, state) {
+            this.inputState[action] = state;
+            if (state && navigator.vibrate) navigator.vibrate(35);
+        },
+
+        setColor(hex) {
+            this.selectedColor = hex;
+            this.sendProfileUpdate();
+        },
+
+        sendProfileUpdate() {
+            const name = document.getElementById('ctrl-pilot-name').value.trim() || 'PILOT';
+            const payload = { type: 'profile', name, color: this.selectedColor || '#00f3ff' };
+            if (this.conn && this.conn.open) this.conn.send(payload);
+            if (this.localChannel) this.localChannel.postMessage(payload);
+            // Also update slot 0 directly if testing on same page
+            PilotsState[0].name = name.toUpperCase();
+            if (this.selectedColor) PilotsState[0].color = this.selectedColor;
+        },
+
+        startInputLoop() {
+            setInterval(() => {
+                let roll = 0;
+                let pitch = 0;
+
+                if (this.isTouchingYoke) {
+                    roll = this.touchRoll;
+                    pitch = this.touchPitch;
+                } else if (this.gyroEnabled) {
+                    // Check screen orientation (landscape vs portrait)
+                    const isLandscape = window.innerWidth > window.innerHeight;
+                    const deltaBeta = this.rawBeta - this.zeroBeta;
+                    const deltaGamma = this.rawGamma - this.zeroGamma;
+
+                    if (isLandscape) {
+                        roll = Math.max(-1, Math.min(1, deltaBeta / 32));
+                        pitch = Math.max(-1, Math.min(1, deltaGamma / 30));
+                    } else {
+                        roll = Math.max(-1, Math.min(1, deltaGamma / 32));
+                        pitch = Math.max(-1, Math.min(1, deltaBeta / 30));
+                    }
+                    if (this.invertPitch) pitch = -pitch;
+
+                    // Update puck visually to reflect gyro tilt
+                    const puck = document.getElementById('touch-yoke-puck');
+                    if (puck) {
+                        puck.style.transform = `translate(${roll * 42}px, ${pitch * 42}px)`;
+                    }
+                }
+
+                this.inputState.roll = roll;
+                this.inputState.pitch = pitch;
+
+                // Update Artificial Horizon UI on Controller View
+                const horizon = document.getElementById('horizon-ball');
+                if (horizon) {
+                    horizon.style.transform = `rotate(${-roll * 45}deg) translateY(${pitch * 28}px)`;
+                }
+                const rRoll = document.getElementById('readout-roll');
+                const rPitch = document.getElementById('readout-pitch');
+                if (rRoll) rRoll.textContent = `${Math.round(roll * 45)}°`;
+                if (rPitch) rPitch.textContent = `${Math.round(pitch * 35)}°`;
+
+                // Transmit to Host via WebRTC and BroadcastChannel
+                const packet = {
+                    type: 'input',
+                    roll: this.inputState.roll,
+                    pitch: this.inputState.pitch,
+                    nitro: this.inputState.nitro,
+                    brake: this.inputState.brake
+                };
+
+                if (this.conn && this.conn.open) {
+                    this.conn.send(packet);
+                }
+                if (this.localChannel) {
+                    this.localChannel.postMessage(packet);
+                }
+                // Direct fallback if user is testing controller on same tab
+                if (App.currentMode === 'controller') {
+                    PilotsState[0].input = { ...this.inputState };
+                }
+            }, 30);
+        }
+    };
+
+    /**
+     * 5. KEYBOARD INPUT HANDLER (Local PC Fallback for Player 1 & Player 2)
+     */
+    const KeyboardControls = {
+        keys: {},
+        init() {
+            window.addEventListener('keydown', (e) => { this.keys[e.code] = true; });
+            window.addEventListener('keyup', (e) => { this.keys[e.code] = false; });
+        },
+        updatePilotInputs() {
+            PilotsState.forEach((slot, idx) => {
+                if (slot.controlType !== 'keyboard') return;
+                let roll = 0, pitch = 0, nitro = false, brake = false;
+
+                if (idx === 0) {
+                    if (this.keys['KeyA'] || this.keys['ArrowLeft']) roll -= 1;
+                    if (this.keys['KeyD'] || this.keys['ArrowRight']) roll += 1;
+                    if (this.keys['KeyW'] || this.keys['ArrowUp']) pitch -= 1;
+                    if (this.keys['KeyS'] || this.keys['ArrowDown']) pitch += 1;
+                    nitro = !!(this.keys['Space'] || this.keys['ShiftLeft']);
+                    brake = !!(this.keys['KeyC'] || this.keys['ControlLeft']);
+                } else {
+                    if (this.keys['KeyJ']) roll -= 1;
+                    if (this.keys['KeyL']) roll += 1;
+                    if (this.keys['KeyI']) pitch -= 1;
+                    if (this.keys['KeyK']) pitch += 1;
+                    nitro = !!this.keys['KeyO'];
+                    brake = !!this.keys['KeyU'];
+                }
+
+                slot.input.roll += (roll - slot.input.roll) * 0.22;
+                slot.input.pitch += (pitch - slot.input.pitch) * 0.22;
+                slot.input.nitro = nitro;
+                slot.input.brake = brake;
+            });
+        }
+    };
+
+    /**
+     * 6. THREE.JS 3D WORLD, PROCEDURAL JETS, CHECKPOINT GATES & MULTI-VIEWPORT RENDERER
+     */
+    const GameWorld = {
+        scene: null,
+        renderer: null,
+        cameras: [],
+        lobbyCamera: null,
+        checkpoints: [],
+        clouds: [],
+        islandMeshes: [],
+        waterMesh: null,
+        clock: new THREE.Clock(),
+
+        init() {
+            const canvas = document.getElementById('game-canvas');
+            this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+            this.renderer.setSize(window.innerWidth, window.innerHeight);
+            this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            this.renderer.autoClear = false;
+
+            this.scene = new THREE.Scene();
+            this.scene.background = new THREE.Color(0x071326);
+            this.scene.fog = new THREE.FogExp2(0x0b1f3a, 0.00042);
+
+            // Lighting
+            const ambient = new THREE.AmbientLight(0x88bbff, 0.75);
+            this.scene.add(ambient);
+
+            const sunLight = new THREE.DirectionalLight(0xffeedd, 1.35);
+            sunLight.position.set(600, 1100, 500);
+            this.scene.add(sunLight);
+
+            // Create 4 Chase Cameras + 1 Lobby Orbit Camera
+            for (let i = 0; i < 4; i++) {
+                const cam = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 1, 6500);
+                this.cameras.push(cam);
+            }
+            this.lobbyCamera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 1, 6500);
+
+            this.buildEnvironment();
+            this.buildTrack('canyon');
+            this.spawnPlanes();
+
+            window.addEventListener('resize', () => this.onResize());
+        },
+
+        buildEnvironment() {
+            // Glowing Cyber Ocean Floor
+            const waterGeo = new THREE.PlaneGeometry(14000, 14000, 64, 64);
+            waterGeo.rotateX(-Math.PI / 2);
+            const waterMat = new THREE.MeshPhongMaterial({
+                color: 0x003355,
+                emissive: 0x001122,
+                specular: 0x00f3ff,
+                shininess: 90,
+                flatShading: true
+            });
+            this.waterMesh = new THREE.Mesh(waterGeo, waterMat);
+            this.waterMesh.position.y = -25;
+            this.scene.add(this.waterMesh);
+
+            // Grid overlay on water for speed perception
+            const gridHelper = new THREE.GridHelper(12000, 120, 0x00f3ff, 0x004477);
+            gridHelper.position.y = -24.5;
+            this.scene.add(gridHelper);
+
+            // Sun Sphere in the distance
+            const sunGeo = new THREE.SphereGeometry(240, 32, 32);
+            const sunMat = new THREE.MeshBasicMaterial({ color: 0xffaa33 });
+            const sun = new THREE.Mesh(sunGeo, sunMat);
+            sun.position.set(0, 850, -3800);
+            this.scene.add(sun);
+
+            // Volumetric-style low-poly clouds
+            const cloudGeo = new THREE.DodecahedronGeometry(38, 1);
+            const cloudMat = new THREE.MeshLambertMaterial({ color: 0xdbeafe, transparent: true, opacity: 0.75 });
+            for (let i = 0; i < 65; i++) {
+                const group = new THREE.Group();
+                for (let j = 0; j < 3; j++) {
+                    const puff = new THREE.Mesh(cloudGeo, cloudMat);
+                    puff.position.set((j - 1) * 32, Math.random() * 12, Math.random() * 18);
+                    puff.scale.set(1 + Math.random() * 0.6, 0.5 + Math.random() * 0.3, 1);
+                    group.add(puff);
+                }
+                group.position.set(
+                    (Math.random() - 0.5) * 4800,
+                    220 + Math.random() * 320,
+                    (Math.random() - 0.5) * 4800
+                );
+                this.scene.add(group);
+                this.clouds.push(group);
+            }
+        },
+
+        changeTrack(trackType) {
+            this.buildTrack(trackType);
+            RaceManager.resetPlanesToStart();
+        },
+
+        buildTrack(trackType = 'canyon') {
+            // Clear previous checkpoints & islands
+            this.checkpoints.forEach(cp => this.scene.remove(cp.mesh));
+            this.checkpoints = [];
+            this.islandMeshes.forEach(m => this.scene.remove(m));
+            this.islandMeshes = [];
+
+            const numGates = trackType === 'canyon' ? 14 : 16;
+            const radiusX = trackType === 'canyon' ? 1250 : 1550;
+            const radiusZ = trackType === 'canyon' ? 950 : 1350;
+
+            for (let i = 0; i < numGates; i++) {
+                const t = (i / numGates) * Math.PI * 2;
+                const x = Math.sin(t) * radiusX + Math.sin(t * 2) * 280;
+                const z = Math.cos(t) * radiusZ - radiusZ;
+                const y = 75 + Math.sin(t * 3) * 55 + (trackType === 'islands' ? Math.cos(t * 2) * 35 : 0);
+
+                // Calculate tangent direction to orient the holographic gate
+                const nextT = ((i + 1) / numGates) * Math.PI * 2;
+                const nx = Math.sin(nextT) * radiusX + Math.sin(nextT * 2) * 280;
+                const nz = Math.cos(nextT) * radiusZ - radiusZ;
+                const ny = 75 + Math.sin(nextT * 3) * 55;
+
+                const gateGroup = new THREE.Group();
+                gateGroup.position.set(x, y, z);
+                gateGroup.lookAt(nx, ny, nz);
+
+                // Outer Neon Ring
+                const ringGeo = new THREE.TorusGeometry(38, 2.2, 12, 36);
+                const isStartGate = i === 0;
+                const ringMat = new THREE.MeshBasicMaterial({
+                    color: isStartGate ? 0xffaa00 : 0x00f3ff
+                });
+                const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+                gateGroup.add(ringMesh);
+
+                // Inner translucent halo
+                const innerGeo = new THREE.RingGeometry(31, 35, 32);
+                const innerMat = new THREE.MeshBasicMaterial({
+                    color: isStartGate ? 0xff5500 : 0x0088ff,
+                    side: THREE.DoubleSide,
+                    transparent: true,
+                    opacity: 0.4
+                });
+                const innerMesh = new THREE.Mesh(innerGeo, innerMat);
+                gateGroup.add(innerMesh);
+
+                this.scene.add(gateGroup);
+                this.checkpoints.push({
+                    index: i,
+                    position: new THREE.Vector3(x, y, z),
+                    mesh: gateGroup,
+                    ringMesh
+                });
+
+                // Spawn Canyon / Island Pillars flanking the track
+                const rockGeo = new THREE.ConeGeometry(85 + Math.random() * 65, 260 + Math.random() * 220, 6);
+                const rockMat = new THREE.MeshPhongMaterial({
+                    color: trackType === 'canyon' ? 0x3b2d4a : 0x1e3a3a,
+                    emissive: 0x070b19,
+                    flatShading: true
+                });
+                const rock = new THREE.Mesh(rockGeo, rockMat);
+                const offsetSide = (i % 2 === 0 ? 1 : -1) * (155 + Math.random() * 80);
+                rock.position.set(x + offsetSide, 60, z + offsetSide * 0.5);
+                this.scene.add(rock);
+                this.islandMeshes.push(rock);
+            }
+        },
+
+        createJetMesh(hexColor) {
+            const jetGroup = new THREE.Group();
+            const mainColor = new THREE.Color(hexColor);
+
+            // Sleek Fuselage
+            const bodyGeo = new THREE.ConeGeometry(2.2, 16, 8);
+            bodyGeo.rotateX(Math.PI / 2);
+            const bodyMat = new THREE.MeshPhongMaterial({ color: 0xe2e8f0, flatShading: true, shininess: 100 });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            jetGroup.add(body);
+
+            // Glass Cockpit Canopy
+            const canopyGeo = new THREE.BoxGeometry(1.7, 1.2, 4.8);
+            const canopyMat = new THREE.MeshPhongMaterial({ color: 0x00f3ff, emissive: 0x004466, shininess: 150 });
+            const canopy = new THREE.Mesh(canopyGeo, canopyMat);
+            canopy.position.set(0, 1.0, 0.5);
+            jetGroup.add(canopy);
+
+            // Swept Delta Wings with Player Color Livery
+            const wingGeo = new THREE.BoxGeometry(14, 0.35, 4.2);
+            const wingMat = new THREE.MeshPhongMaterial({ color: mainColor, emissive: mainColor.clone().multiplyScalar(0.25), flatShading: true });
+            const wings = new THREE.Mesh(wingGeo, wingMat);
+            wings.position.set(0, 0, -1.2);
+            jetGroup.add(wings);
+
+            // Twin Tail Fins
+            const finGeo = new THREE.BoxGeometry(0.35, 3.2, 2.8);
+            const finLeft = new THREE.Mesh(finGeo, wingMat);
+            finLeft.position.set(-2.2, 1.4, -5.5);
+            finLeft.rotation.z = 0.25;
+            const finRight = new THREE.Mesh(finGeo, wingMat);
+            finRight.position.set(2.2, 1.4, -5.5);
+            finRight.rotation.z = -0.25;
+            jetGroup.add(finLeft, finRight);
+
+            // Glowing Afterburner Flame Cone
+            const flameGeo = new THREE.ConeGeometry(1.3, 6.5, 12);
+            flameGeo.rotateX(-Math.PI / 2);
+            const flameMat = new THREE.MeshBasicMaterial({ color: 0x00f3ff, transparent: true, opacity: 0.85 });
+            const flame = new THREE.Mesh(flameGeo, flameMat);
+            flame.position.set(0, 0, -9.8);
+            jetGroup.add(flame);
+
+            return { jetGroup, wingMat, flame };
+        },
+
+        spawnPlanes() {
+            PilotsState.forEach((slot, idx) => {
+                if (slot.plane && slot.plane.mesh) {
+                    this.scene.remove(slot.plane.mesh);
+                }
+                const { jetGroup, wingMat, flame } = this.createJetMesh(slot.color);
+                this.scene.add(jetGroup);
+
+                slot.plane = {
+                    mesh: jetGroup,
+                    wingMat,
+                    flame,
+                    speed: 140,
+                    nitroFuel: 100,
+                    pitchAngle: 0,
+                    yawAngle: Math.PI / 2,
+                    rollAngle: 0,
+                    currentGate: 1,
+                    lap: 1,
+                    finished: false,
+                    finishTime: 0,
+                    totalProgress: 0
+                };
+            });
+            RaceManager.resetPlanesToStart();
+        },
+
+        updatePlaneColors() {
+            PilotsState.forEach((slot) => {
+                if (slot.plane && slot.plane.wingMat) {
+                    const c = new THREE.Color(slot.color);
+                    slot.plane.wingMat.color.copy(c);
+                    slot.plane.wingMat.emissive.copy(c).multiplyScalar(0.25);
+                }
+            });
+        },
+
+        onResize() {
+            if (!this.renderer) return;
+            this.renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+    };
+
+    /**
+     * 7. RACE MANAGER, FLIGHT PHYSICS, AI PILOTS & MULTI-SCREEN HUD
+     */
+    const RaceManager = {
+        state: 'lobby', // 'lobby' | 'countdown' | 'racing' | 'finished'
+        raceStartTime: 0,
+        forceSingleScreen: false,
+        activeViewportCount: 1,
+
+        resetPlanesToStart() {
+            if (!GameWorld.checkpoints.length) return;
+            const startGate = GameWorld.checkpoints[0];
+            const nextGate = GameWorld.checkpoints[1];
+            const dir = new THREE.Vector3().subVectors(nextGate.position, startGate.position).normalize();
+            const baseYaw = Math.atan2(dir.x, dir.z);
+
+            PilotsState.forEach((slot, idx) => {
+                const p = slot.plane;
+                if (!p) return;
+                const lateralOffset = (idx - 1.5) * 14;
+                p.mesh.position.set(
+                    startGate.position.x + Math.cos(baseYaw) * lateralOffset,
+                    startGate.position.y + (idx % 2) * 5,
+                    startGate.position.z - Math.sin(baseYaw) * lateralOffset
+                );
+                p.yawAngle = baseYaw;
+                p.pitchAngle = 0;
+                p.rollAngle = 0;
+                p.speed = 135;
+                p.nitroFuel = 100;
+                p.currentGate = 1;
+                p.lap = 1;
+                p.finished = false;
+                p.finishTime = 0;
+                p.totalProgress = 0;
+                this.applyPlaneOrientation(p);
+            });
+        },
+
+        applyPlaneOrientation(p) {
+            const euler = new THREE.Euler(p.pitchAngle, p.yawAngle, -p.rollAngle, 'YXZ');
+            p.mesh.quaternion.setFromEuler(euler);
+        },
+
+        startRaceCountdown() {
+            SoundEngine.init();
+            document.getElementById('podium-modal').classList.add('hidden');
+            document.getElementById('host-lobby-view').classList.add('hidden');
+            document.getElementById('race-hud-view').classList.remove('hidden');
+
+            this.resetPlanesToStart();
+            this.setupSplitScreenHUD();
+            this.state = 'countdown';
+
+            const banner = document.getElementById('countdown-text');
+            let count = 3;
+            banner.textContent = count;
+            banner.classList.remove('scale-0');
+            SoundEngine.playBeep(520, 0.18, 'square');
+
+            const timer = setInterval(() => {
+                count--;
+                if (count > 0) {
+                    banner.textContent = count;
+                    SoundEngine.playBeep(520, 0.18, 'square');
+                } else if (count === 0) {
+                    banner.textContent = 'START!';
+                    banner.classList.replace('text-cyan-300', 'text-amber-400');
+                    SoundEngine.playBeep(1040, 0.4, 'sawtooth');
+                    this.state = 'racing';
+                    this.raceStartTime = performance.now();
+                } else {
+                    banner.classList.add('scale-0');
+                    banner.classList.replace('text-amber-400', 'text-cyan-300');
+                    clearInterval(timer);
+                }
+            }, 950);
+        },
+
+        returnToLobby() {
+            this.state = 'lobby';
+            document.getElementById('race-hud-view').classList.add('hidden');
+            document.getElementById('podium-modal').classList.add('hidden');
+            document.getElementById('host-lobby-view').classList.remove('hidden');
+            SoundEngine.updateEngineSound(0, false, false);
+        },
+
+        toggleSplitScreenMode() {
+            this.forceSingleScreen = !this.forceSingleScreen;
+            document.getElementById('split-mode-label').textContent =
+                this.forceSingleScreen ? 'EKRAN: TYLKO P1' : 'EKRAN: AUTO SPLIT';
+            this.setupSplitScreenHUD();
+        },
+
+        getActiveHumanSlots() {
+            if (this.forceSingleScreen) return [PilotsState[0]];
+            const humans = PilotsState.filter(s => s.controlType !== 'ai');
+            // If user selected 4 players or wants quad view, show human slots (1, 2, or 4)
+            if (humans.length === 1) return [humans[0]];
+            if (humans.length === 2) return humans;
+            return PilotsState;
+        },
+
+        setupSplitScreenHUD() {
+            const viewSlots = this.getActiveHumanSlots();
+            this.activeViewportCount = viewSlots.length;
+            const dividers = document.getElementById('split-screen-dividers');
+            const hudContainer = document.getElementById('viewports-hud-container');
+
+            dividers.className = 'w-full h-full relative';
+            if (this.activeViewportCount === 2) dividers.classList.add('split-border-2');
+            if (this.activeViewportCount >= 3) dividers.classList.add('split-border-4');
+
+            const totalLaps = parseInt(document.getElementById('laps-select').value, 10) || 3;
+            const totalGates = GameWorld.checkpoints.length;
+
+            hudContainer.innerHTML = viewSlots.map((slot, vIdx) => {
+                let posClass = 'inset-0';
+                if (this.activeViewportCount === 2) {
+                    posClass = vIdx === 0 ? 'top-0 bottom-0 left-0 w-1/2' : 'top-0 bottom-0 right-0 w-1/2';
+                } else if (this.activeViewportCount >= 3) {
+                    const quadrants = [
+                        'top-0 left-0 w-1/2 h-1/2',
+                        'top-0 right-0 w-1/2 h-1/2',
+                        'bottom-0 left-0 w-1/2 h-1/2',
+                        'bottom-0 right-0 w-1/2 h-1/2'
+                    ];
+                    posClass = quadrants[vIdx];
+                }
+
+                return `
+                <div class="absolute ${posClass} p-3 sm:p-5 flex flex-col justify-between pointer-events-none">
+                    <!-- Top Telemetry Row -->
+                    <div class="flex items-start justify-between pt-8">
+                        <div class="glass-panel rounded-xl px-3 py-1.5 border-l-4" style="border-left-color:${slot.color}">
+                            <div class="flex items-center gap-2">
+                                <span class="font-orbitron font-black text-xs px-1.5 py-0.5 rounded text-slate-950" style="background:${slot.color}">P${slot.id + 1}</span>
+                                <span class="font-orbitron font-bold text-sm text-white">${slot.name}</span>
+                            </div>
+                            <div class="text-[11px] text-slate-300 flex items-center gap-3 mt-0.5">
+                                <span>BRAMKA: <strong id="hud-gate-${slot.id}" class="text-cyan-300">1/${totalGates}</strong></span>
+                                <span>OKRĄŻENIE: <strong id="hud-lap-${slot.id}" class="text-amber-300">1/${totalLaps}</strong></span>
+                            </div>
+                        </div>
+
+                        <div class="glass-panel rounded-xl px-3 py-1 text-right">
+                            <div class="text-[10px] text-slate-400 font-orbitron">POZYCJA</div>
+                            <div id="hud-pos-${slot.id}" class="font-orbitron font-black text-xl text-amber-400">1<span class="text-xs">/4</span></div>
+                        </div>
+                    </div>
+
+                    <!-- Center HUD Crosshair -->
+                    <div class="mx-auto my-auto w-16 h-16 border border-cyan-400/30 rounded-full flex items-center justify-center">
+                        <div class="w-1.5 h-1.5 rounded-full bg-cyan-400/70"></div>
+                    </div>
+
+                    <!-- Bottom Speedometer & Nitro Bar -->
+                    <div class="flex items-end justify-between gap-2">
+                        <div class="glass-panel rounded-xl px-3 py-2">
+                            <div class="text-[10px] text-slate-400 font-orbitron">PRĘDKOŚĆ</div>
+                            <div class="flex items-baseline gap-1">
+                                <span id="hud-speed-${slot.id}" class="font-orbitron font-black text-2xl sm:text-3xl text-cyan-300">420</span>
+                                <span class="text-[10px] font-orbitron text-slate-400">KM/H</span>
+                            </div>
+                        </div>
+
+                        <div class="glass-panel rounded-xl px-3 py-2 w-36 sm:w-44">
+                            <div class="flex justify-between text-[10px] font-orbitron mb-1">
+                                <span class="text-amber-400">DOPALACZ NITRO</span>
+                                <span id="hud-nitro-txt-${slot.id}" class="text-white">100%</span>
+                            </div>
+                            <div class="w-full h-2 bg-slate-900 rounded-full overflow-hidden border border-slate-700">
+                                <div id="hud-nitro-bar-${slot.id}" class="h-full bg-gradient-to-r from-cyan-400 to-amber-400 transition-all duration-75" style="width:100%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
+            }).join('');
+        },
+
+        updateAI(slot, dt) {
+            const p = slot.plane;
+            const targetGate = GameWorld.checkpoints[p.currentGate];
+            if (!targetGate) return;
+
+            const toTarget = new THREE.Vector3().subVectors(targetGate.position, p.mesh.position);
+            const desiredYaw = Math.atan2(toTarget.x, toTarget.z);
+            const horizDist = Math.hypot(toTarget.x, toTarget.z);
+            const desiredPitch = Math.atan2(toTarget.y, horizDist);
+
+            // Shortest angle difference
+            let yawDiff = desiredYaw - p.yawAngle;
+            while (yawDiff > Math.PI) yawDiff -= Math.PI * 2;
+            while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
+
+            const pitchDiff = desiredPitch - p.pitchAngle;
+
+            slot.input.roll = Math.max(-1, Math.min(1, -yawDiff * 1.8));
+            slot.input.pitch = Math.max(-1, Math.min(1, -pitchDiff * 2.2));
+            slot.input.nitro = Math.abs(yawDiff) < 0.25 && p.nitroFuel > 35;
+            slot.input.brake = Math.abs(yawDiff) > 0.9;
+        },
+
+        updatePhysics(dt) {
+            KeyboardControls.updatePilotInputs();
+            const totalGates = GameWorld.checkpoints.length;
+            const totalLaps = parseInt(document.getElementById('laps-select').value, 10) || 3;
+
+            PilotsState.forEach((slot) => {
+                const p = slot.plane;
+                if (!p) return;
+
+                if (this.state === 'racing' && !p.finished) {
+                    if (slot.controlType === 'ai') {
+                        this.updateAI(slot, dt);
+                    }
+
+                    // Target speed & Nitro
+                    const isBoosting = slot.input.nitro && p.nitroFuel > 1;
+                    const isBraking = slot.input.brake;
+                    if (isBoosting) {
+                        p.nitroFuel = Math.max(0, p.nitroFuel - 34 * dt);
+                    } else {
+                        p.nitroFuel = Math.min(100, p.nitroFuel + 14 * dt);
+                    }
+
+                    const targetSpeed = isBoosting ? 295 : (isBraking ? 95 : 175);
+                    p.speed += (targetSpeed - p.speed) * 3.5 * dt;
+
+                    // Roll, Pitch, Yaw flight dynamics
+                    const targetRoll = slot.input.roll * 1.05;
+                    p.rollAngle += (targetRoll - p.rollAngle) * 6.0 * dt;
+
+                    const pitchInput = -slot.input.pitch;
+                    p.pitchAngle = Math.max(-0.85, Math.min(0.85, p.pitchAngle + pitchInput * 1.65 * dt));
+                    // Gentle auto-level pitch
+                    p.pitchAngle *= (1 - 0.8 * dt);
+
+                    // Banking turns the aircraft (Yaw)
+                    const turnRate = isBraking ? 2.15 : 1.45;
+                    p.yawAngle -= p.rollAngle * turnRate * dt;
+
+                    this.applyPlaneOrientation(p);
+
+                    // Forward velocity vector
+                    const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(p.mesh.quaternion);
+                    p.mesh.position.addScaledVector(forward, p.speed * dt);
+
+                    // Keep above water floor
+                    if (p.mesh.position.y < -8) {
+                        p.mesh.position.y = -8;
+                        p.pitchAngle = Math.max(0, p.pitchAngle);
+                    }
+
+                    // Visual Afterburner scaling
+                    const flameScale = isBoosting ? 1.85 + Math.random() * 0.4 : 0.85 + Math.random() * 0.15;
+                    p.flame.scale.set(1, 1, flameScale);
+                    p.flame.material.color.setHex(isBoosting ? 0xffaa00 : 0x00f3ff);
+
+                    // Checkpoint Gate detection
+                    const gate = GameWorld.checkpoints[p.currentGate];
+                    if (gate) {
+                        const distToGate = p.mesh.position.distanceTo(gate.position);
+                        if (distToGate < 52) {
+                            if (slot.id === 0 || slot.controlType !== 'ai') {
+                                SoundEngine.playCheckpoint();
+                            }
+                            p.currentGate = (p.currentGate + 1) % totalGates;
+                            if (p.currentGate === 1) {
+                                p.lap++;
+                                if (p.lap > totalLaps) {
+                                    p.finished = true;
+                                    p.finishTime = ((performance.now() - this.raceStartTime) / 1000).toFixed(2);
+                                    this.checkRaceCompletion();
+                                }
+                            }
+                        }
+                        p.totalProgress = (p.lap - 1) * totalGates * 1000 +
+                            ((p.currentGate === 0 ? totalGates : p.currentGate) * 1000) - distToGate;
+                    }
+                }
+            });
+
+            // Update Engine Audio for Player 1
+            if (this.state === 'racing') {
+                const p0 = PilotsState[0].plane;
+                SoundEngine.updateEngineSound(p0.speed / 300, PilotsState[0].input.nitro && p0.nitroFuel > 1, true);
+            }
+
+            this.updateHUDValues(totalGates, totalLaps);
+        },
+
+        updateHUDValues(totalGates, totalLaps) {
+            if (this.state !== 'racing') return;
+
+            // Compute live positions 1st..4th
+            const sorted = [...PilotsState].sort((a, b) => b.plane.totalProgress - a.plane.totalProgress);
+
+            PilotsState.forEach((slot) => {
+                const p = slot.plane;
+                const rank = sorted.findIndex(s => s.id === slot.id) + 1;
+                const speedEl = document.getElementById(`hud-speed-${slot.id}`);
+                if (!speedEl) return;
+
+                speedEl.textContent = Math.round(p.speed * 3.2);
+                document.getElementById(`hud-gate-${slot.id}`).textContent = `${p.currentGate === 0 ? totalGates : p.currentGate}/${totalGates}`;
+                document.getElementById(`hud-lap-${slot.id}`).textContent = `${Math.min(p.lap, totalLaps)}/${totalLaps}`;
+                document.getElementById(`hud-pos-${slot.id}`).innerHTML = `${rank}<span class="text-xs">/4</span>`;
+                document.getElementById(`hud-nitro-txt-${slot.id}`).textContent = `${Math.round(p.nitroFuel)}%`;
+                document.getElementById(`hud-nitro-bar-${slot.id}`).style.width = `${p.nitroFuel}%`;
+            });
+        },
+
+        checkRaceCompletion() {
+            const humans = PilotsState.filter(s => s.controlType !== 'ai');
+            const allHumansDone = humans.length > 0
+                ? humans.every(h => h.plane.finished)
+                : PilotsState[0].plane.finished;
+
+            if (allHumansDone && this.state !== 'finished') {
+                this.state = 'finished';
+                this.showPodium();
+            }
+        },
+
+        showPodium() {
+            const modal = document.getElementById('podium-modal');
+            const list = document.getElementById('podium-standings');
+            const sorted = [...PilotsState].sort((a, b) => b.plane.totalProgress - a.plane.totalProgress);
+
+            list.innerHTML = sorted.map((slot, idx) => `
+                <div class="glass-card rounded-xl p-3 flex items-center justify-between border-l-4" style="border-left-color:${slot.color}">
+                    <div class="flex items-center gap-3">
+                        <span class="font-orbitron font-black text-lg text-amber-400">#${idx + 1}</span>
+                        <span class="font-orbitron font-bold text-white">${slot.name}</span>
+                    </div>
+                    <span class="font-mono text-xs text-cyan-300">${slot.plane.finishTime ? slot.plane.finishTime + ' s' : 'W locie'}</span>
+                </div>
+            `).join('');
+
+            modal.classList.remove('hidden');
+            SoundEngine.playCheckpoint();
+        }
+    };
+
+    /**
+     * 8. MAIN APPLICATION CONTROLLER & RENDER LOOP
+     */
+    const App = {
+        currentMode: 'host', // 'host' | 'controller'
+
+        init() {
+            KeyboardControls.init();
+            GameWorld.init();
+            HostLobby.init();
+
+            // Check if URL has ?room=XXXX parameter (Scanned via QR code on Smartphone)
+            const params = new URLSearchParams(window.location.search);
+            const roomParam = params.get('room');
+            MobileController.init(roomParam);
+
+            if (roomParam) {
+                this.switchMode('controller');
+            } else {
+                this.switchMode('host');
+            }
+
+            this.animate();
+        },
+
+        switchMode(mode) {
+            this.currentMode = mode;
+            const ctrlView = document.getElementById('controller-view');
+            const btnHost = document.getElementById('btn-switch-host');
+            const btnCtrl = document.getElementById('btn-switch-controller');
+
+            if (mode === 'controller') {
+                ctrlView.classList.remove('hidden');
+                btnCtrl.className = 'px-3 py-1.5 rounded-lg text-xs font-orbitron font-bold border border-amber-400 bg-amber-500/20 text-amber-200 flex items-center gap-1.5 transition';
+                btnHost.className = 'px-3 py-1.5 rounded-lg text-xs font-orbitron font-bold border border-slate-700 bg-slate-900/80 text-slate-300 flex items-center gap-1.5 transition';
+            } else {
+                ctrlView.classList.add('hidden');
+                btnHost.className = 'px-3 py-1.5 rounded-lg text-xs font-orbitron font-bold border border-cyan-400 bg-cyan-500/20 text-cyan-200 flex items-center gap-1.5 transition';
+                btnCtrl.className = 'px-3 py-1.5 rounded-lg text-xs font-orbitron font-bold border border-slate-700 bg-slate-900/80 text-slate-300 flex items-center gap-1.5 transition';
+            }
+        },
+
+        animate() {
+            requestAnimationFrame(() => this.animate());
+
+            const dt = Math.min(GameWorld.clock.getDelta(), 0.05);
+            const elapsed = GameWorld.clock.getElapsedTime();
+
+            // Rotate holographic rings gently
+            GameWorld.checkpoints.forEach((cp, idx) => {
+                cp.ringMesh.rotation.z = elapsed * 0.8 + idx;
+            });
+
+            const renderer = GameWorld.renderer;
+            const W = window.innerWidth;
+            const H = window.innerHeight;
+            renderer.clear();
+
+            if (RaceManager.state === 'lobby') {
+                // Cinematic orbiting camera around Squadron in Lobby
+                const focusPlane = PilotsState[0].plane.mesh;
+                GameWorld.lobbyCamera.aspect = W / H;
+                GameWorld.lobbyCamera.updateProjectionMatrix();
+                GameWorld.lobbyCamera.position.set(
+                    focusPlane.position.x + Math.sin(elapsed * 0.45) * 42,
+                    focusPlane.position.y + 14 + Math.sin(elapsed * 0.8) * 4,
+                    focusPlane.position.z + Math.cos(elapsed * 0.45) * 42
+                );
+                GameWorld.lobbyCamera.lookAt(focusPlane.position);
+                renderer.setViewport(0, 0, W, H);
+                renderer.setScissorTest(false);
+                renderer.render(GameWorld.scene, GameWorld.lobbyCamera);
+            } else {
+                // Update flight physics and render Split-Screen or Full-Screen Chase Cameras
+                RaceManager.updatePhysics(dt);
+                const viewSlots = RaceManager.getActiveHumanSlots();
+                const count = viewSlots.length;
+                renderer.setScissorTest(true);
+
+                viewSlots.forEach((slot, vIdx) => {
+                    const cam = GameWorld.cameras[vIdx];
+                    const p = slot.plane;
+
+                    // Dynamic Chase Camera with slight bank lag
+                    const backOffset = new THREE.Vector3(0, 6.2, -26).applyQuaternion(p.mesh.quaternion);
+                    const targetCamPos = p.mesh.position.clone().add(backOffset);
+                    cam.position.lerp(targetCamPos, 0.18);
+
+                    const lookAhead = new THREE.Vector3(0, 1.5, 35).applyQuaternion(p.mesh.quaternion);
+                    cam.lookAt(p.mesh.position.clone().add(lookAhead));
+
+                    let vx = 0, vy = 0, vw = W, vh = H;
+                    if (count === 2) {
+                        vw = W / 2;
+                        vx = vIdx === 0 ? 0 : W / 2;
+                    } else if (count >= 3) {
+                        vw = W / 2;
+                        vh = H / 2;
+                        vx = (vIdx % 2 === 0) ? 0 : W / 2;
+                        vy = (vIdx < 2) ? H / 2 : 0; // WebGL bottom-left origin
+                    }
+
+                    cam.aspect = vw / vh;
+                    cam.updateProjectionMatrix();
+                    renderer.setViewport(vx, vy, vw, vh);
+                    renderer.setScissor(vx, vy, vw, vh);
+                    renderer.render(GameWorld.scene, cam);
+                });
+            }
+        }
+    };
+
+    window.onload = () => App.init();
+    </script>
+</body>
+</html>
